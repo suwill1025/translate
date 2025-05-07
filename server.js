@@ -116,3 +116,16 @@ async function handleEvent(event) {
       type: "text",
       text: "⚠️ 抱歉，翻譯時發生錯誤，請稍後再試。"
     });
+  }
+}
+
+// ✅ 健康檢查
+app.get("/", (req, res) => {
+  res.send("✅ LINE Google Translate bot is running.");
+});
+
+// ✅ 啟動伺服器
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`🚀 Server is listening on port ${port}`);
+});
