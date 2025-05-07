@@ -26,21 +26,25 @@ async function translateWithGoogle(text, sourceLang, targetLangs) {
   const results = [];
 
   for (const target of targetLangs) {
-    const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
-    const res = await fetch(url, {
+    const bodyData = {
+      q: text,
+      target: target,
+      format: "text"
+    };
+
+    // ✅ 如果 sourceLang 是自動偵測，不加入 source 欄位
+    if (sourceLang !== "auto") {
+      bodyData.source = sourceLang;
+    }
+
+    const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${apiKey}`, {
       method: "POST",
-      body: JSON.stringify({
-        q: text,
-        source: sourceLang,
-        target: target,
-        format: "text"
-      }),
+      body: JSON.stringify(bodyData),
       headers: { "Content-Type": "application/json" }
     });
 
     const data = await res.json();
 
-    // ✅ 檢查是否成功取得 translations
     if (!data.data || !data.data.translations) {
       console.error("❌ Google Translate API response error:", JSON.stringify(data));
       throw new Error(`Google Translate 回應無效，無法取得翻譯結果`);
