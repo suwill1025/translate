@@ -73,4 +73,6 @@ async function handleEvent(event) {
 }
 
 app.get("/", (req, res) => {
-  res.send("✅ LINE ChatGPT Translator is running
+  res.send("✅ LINE ChatGPT Translator is running.");
+});
+
