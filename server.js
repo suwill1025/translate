@@ -20,7 +20,7 @@ const openai = new OpenAI({
 });
 
 app.post("/webhook", (req, res) => {
-  res.status(200).send("OK");
+  res.status(200).send("OK"); // ✅ 確保即時回應 LINE
 
   if (!req.body.events || req.body.events.length === 0) return;
 
@@ -32,7 +32,12 @@ async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
 
   const text = event.message.text.trim();
-  const langCode = franc(text);
+  let langCode = franc(text);
+
+  // ✅ 若無法偵測語言，自動設為英文
+  if (langCode === "und") {
+    langCode = "eng";
+  }
 
   let prompt = "";
 
@@ -59,18 +64,13 @@ async function handleEvent(event) {
     });
   } catch (error) {
     console.error("OpenAI error:", error.message);
+
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
-      text: "Sorry, I couldn't translate that due to an error."
+      text: "⚠️ 抱歉，翻譯過程中發生錯誤（可能是語言無法辨識、API 錯誤或回覆過長）"
     });
   }
 }
 
 app.get("/", (req, res) => {
-  res.send("✅ LINE ChatGPT Translator is running.");
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`🚀 Server is listening on port ${port}`);
-});
+  res.send("✅ LINE ChatGPT Translator is running
