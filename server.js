@@ -6,13 +6,13 @@ const franc = require("franc");
 
 const app = express();
 
+// ✅ LINE middleware 放在 json parser 之前
 app.use(middleware({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 }));
 
+// ✅ 其他 JSON API 再 parse body
 app.use(express.json());
-
-));
 
 const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
