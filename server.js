@@ -2,9 +2,9 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import { OpenAI } from "openai";
 import { Client, middleware } from "@line/bot-sdk";
 import { franc } from "franc";
+import fetch from "node-fetch";
 
 const app = express();
 
@@ -13,7 +13,7 @@ app.use(middleware({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 }));
 
-// ✅ 其他 JSON API 再 parse body
+// ✅ 其他 API 的 json parser 放後面
 app.use(express.json());
 
 const lineClient = new Client({
@@ -21,20 +21,37 @@ const lineClient = new Client({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+async function translateWithGoogle(text, sourceLang, targetLangs) {
+  const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY;
+  const results = [];
+
+  for (const target of targetLangs) {
+    const url = `https://translation.googleapis.com/language/translate/v2?key=${apiKey}`;
+    const res = await fetch(url, {
+      method: "POST",
+      body: JSON.stringify({
+        q: text,
+        source: sourceLang,
+        target: target,
+        format: "text"
+      }),
+      headers: { "Content-Type": "application/json" }
+    });
+
+    const data = await res.json();
+    results.push({ lang: target, text: data.data.translations[0].translatedText });
+  }
+
+  return results;
+}
 
 app.post("/webhook", (req, res) => {
-  // ✅ 一定要在最前面就回傳 200
   res.status(200).send("OK");
 
-  // ✅ 空 events 不做事
   if (!req.body.events || req.body.events.length === 0) {
     return;
   }
 
-  // ✅ 非同步處理 event，不影響回應
   Promise.all(req.body.events.map(handleEvent))
     .catch(err => console.error("Event handling error:", err));
 });
@@ -45,47 +62,49 @@ async function handleEvent(event) {
   const text = event.message.text.trim();
   let langCode = franc(text);
 
-  // ✅ 若無法偵測語言，自動設為英文
   if (langCode === "und") {
-    langCode = "eng";
+    langCode = "en"; // 預設英文
   }
 
-  let prompt = "";
+  const langMap = {
+    cmn: "zh",
+    eng: "en",
+    ind: "id"
+  };
 
-  if (langCode === "cmn") {
-    prompt = `請將這句中文翻譯為英文和印尼文：\n\n${text}`;
-  } else if (langCode === "ind") {
-    prompt = `Please translate this Indonesian sentence into Chinese and English:\n\n${text}`;
-  } else {
-    prompt = `Translate the following sentence into Chinese and Indonesian:\n\n${text}`;
-  }
+  const source = langMap[langCode] || "auto";
+  let targets = [];
+
+  if (source === "zh") targets = ["en", "id"];
+  else if (source === "id") targets = ["zh", "en"];
+  else targets = ["zh", "id"];
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.5
-    });
-
-    const replyText = completion.choices[0].message.content;
+    const translations = await translateWithGoogle(text, source, targets);
+    const replyText = translations.map(t => `🔤 ${t.lang.toUpperCase()}:\n${t.text}`).join("\n\n");
 
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
       text: replyText
     });
   } catch (error) {
-    console.error("OpenAI error:", error.message);
-
+    console.error("Google Translate error:", error.message);
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
-      text: "⚠️ 抱歉，翻譯過程中發生錯誤（可能是語言無法辨識、API 錯誤或回覆過長）"
+      text: "⚠️ 抱歉，翻譯時發生錯誤，請稍後再試。"
     });
   }
 }
 
 app.get("/", (req, res) => {
-  res.send("✅ LINE ChatGPT Translator is running.");
+  res.send("✅ LINE Google Translate bot is running.");
 });
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`🚀 Server is listening on port ${port}`);
+});
+
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
