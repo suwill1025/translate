@@ -8,12 +8,12 @@ import fetch from "node-fetch";
 
 const app = express();
 
-// ✅ LINE middleware 放在 json parser 之前
+// ✅ LINE middleware 放在 JSON parser 之前
 app.use(middleware({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 }));
 
-// ✅ 其他 API 的 json parser 放後面
+// ✅ 其他 API JSON parser 放後面
 app.use(express.json());
 
 const lineClient = new Client({
@@ -21,6 +21,7 @@ const lineClient = new Client({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
+// ✅ 翻譯函式
 async function translateWithGoogle(text, sourceLang, targetLangs) {
   const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY;
   const results = [];
@@ -31,8 +32,6 @@ async function translateWithGoogle(text, sourceLang, targetLangs) {
       target: target,
       format: "text"
     };
-
-    // ✅ 如果 sourceLang 是自動偵測，不加入 source 欄位
     if (sourceLang !== "auto") {
       bodyData.source = sourceLang;
     }
@@ -47,7 +46,7 @@ async function translateWithGoogle(text, sourceLang, targetLangs) {
 
     if (!data.data || !data.data.translations) {
       console.error("❌ Google Translate API response error:", JSON.stringify(data));
-      throw new Error(`Google Translate 回應無效，無法取得翻譯結果`);
+      throw new Error("Google Translate 回應無效，無法取得翻譯結果");
     }
 
     results.push({
@@ -59,17 +58,15 @@ async function translateWithGoogle(text, sourceLang, targetLangs) {
   return results;
 }
 
+// ✅ webhook 處理
 app.post("/webhook", (req, res) => {
   res.status(200).send("OK");
-
-  if (!req.body.events || req.body.events.length === 0) {
-    return;
-  }
-
+  if (!req.body.events || req.body.events.length === 0) return;
   Promise.all(req.body.events.map(handleEvent))
     .catch(err => console.error("Event handling error:", err));
 });
 
+// ✅ 單則訊息處理
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
 
@@ -77,37 +74,37 @@ async function handleEvent(event) {
   let langCode = franc(text);
 
   if (langCode === "und") {
-    langCode = "en"; // 預設英文
+    langCode = "en";
   }
 
   const langMap = {
     cmn: "zh-TW",
+    zho: "zh-TW",
     eng: "en",
-    ind: "id"
+    enm: "en",
+    ind: "id",
+    jpn: "ja"
   };
 
   const source = langMap[langCode] || "auto";
-  let targets = [];
 
-const allTargets = ["zh-TW", "en", "id"];
-
-const targets = allTargets.filter(lang => lang !== source);
+  // ✅ 固定三語，但排除原文語言
+  const allTargets = ["zh-TW", "en", "id"];
+  const targets = allTargets.filter(lang => lang !== source);
 
   try {
     const translations = await translateWithGoogle(text, source, targets);
     const flagMap = {
-  "en": "🇺🇸",
-  "zh-TW": "🇹🇼",
-  "zh": "🇹🇼", // fallback if needed
-  "id": "🇮🇩"
-};
+      "en": "🇺🇸",
+      "zh-TW": "🇹🇼",
+      "id": "🇮🇩"
+    };
 
-   const replyText =
-  `🌐 原文：\n${text}\n\n` +
-  translations
-    .map(t => `${flagMap[t.lang] || "🌍"} ${t.lang.toUpperCase()}：\n${t.text}`)
-    .join("\n\n");
-
+    const replyText =
+      `🌐 原文：\n${text}\n\n` +
+      translations
+        .map(t => `${flagMap[t.lang] || "🌍"} ${t.lang.toUpperCase()}：\n${t.text}`)
+        .join("\n\n");
 
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
@@ -119,14 +116,3 @@ const targets = allTargets.filter(lang => lang !== source);
       type: "text",
       text: "⚠️ 抱歉，翻譯時發生錯誤，請稍後再試。"
     });
-  }
-}
-
-app.get("/", (req, res) => {
-  res.send("✅ LINE Google Translate bot is running.");
-});
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => {
-  console.log(`🚀 Server is listening on port ${port}`);
-});
