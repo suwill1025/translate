@@ -1,6 +1,7 @@
 {
   "name": "line-gpt-translator",
   "version": "1.0.0",
+  "type": "module",
   "description": "LINE bot with GPT for multi-language translation",
   "main": "server.js",
   "scripts": {
