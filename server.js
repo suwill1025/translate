@@ -8,12 +8,12 @@ import fetch from "node-fetch";
 
 const app = express();
 
-// ✅ LINE middleware 放在 JSON parser 之前
+// ✅ LINE middleware 放在 JSON parser 前
 app.use(middleware({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 }));
 
-// ✅ 其他 API JSON parser 放後面
+// ✅ JSON parser 放在 middleware 後
 app.use(express.json());
 
 const lineClient = new Client({
@@ -21,7 +21,7 @@ const lineClient = new Client({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
-// ✅ 翻譯函式
+// ✅ Google Translate 呼叫封裝
 async function translateWithGoogle(text, sourceLang, targetLangs) {
   const apiKey = process.env.GOOGLE_TRANSLATE_API_KEY;
   const results = [];
@@ -58,15 +58,17 @@ async function translateWithGoogle(text, sourceLang, targetLangs) {
   return results;
 }
 
-// ✅ webhook 處理
+// ✅ webhook 接收
 app.post("/webhook", (req, res) => {
   res.status(200).send("OK");
+
   if (!req.body.events || req.body.events.length === 0) return;
+
   Promise.all(req.body.events.map(handleEvent))
     .catch(err => console.error("Event handling error:", err));
 });
 
-// ✅ 單則訊息處理
+// ✅ 處理單一事件
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
 
@@ -87,8 +89,6 @@ async function handleEvent(event) {
   };
 
   const source = langMap[langCode] || "auto";
-
-  // ✅ 固定三語，但排除原文語言
   const allTargets = ["zh-TW", "en", "id"];
   const targets = allTargets.filter(lang => lang !== source);
 
@@ -100,11 +100,9 @@ async function handleEvent(event) {
       "id": "🇮🇩"
     };
 
-    const replyText =
-      `🌐 原文：\n${text}\n\n` +
-      translations
-        .map(t => `${flagMap[t.lang] || "🌍"} ${t.lang.toUpperCase()}：\n${t.text}`)
-        .join("\n\n");
+    const replyText = translations
+      .map(t => `${flagMap[t.lang] || "🌍"} ${t.lang.toUpperCase()}：\n${t.text}`)
+      .join("\n\n");
 
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
