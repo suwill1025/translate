@@ -4,7 +4,7 @@ dotenv.config();
 import express from "express";
 import { OpenAI } from "openai";
 import { Client, middleware } from "@line/bot-sdk";
-import franc from "franc";
+import { franc } from "franc";
 
 const app = express();
 
