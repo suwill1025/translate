@@ -89,9 +89,9 @@ async function handleEvent(event) {
   const source = langMap[langCode] || "auto";
   let targets = [];
 
-  if (source === "zh-TW") targets = ["en", "id"];
-  else if (source === "id") targets = ["zh-TW", "en"];
-  else targets = ["zh-TW", "id"];
+const allTargets = ["zh-TW", "en", "id"];
+
+const targets = allTargets.filter(lang => lang !== source);
 
   try {
     const translations = await translateWithGoogle(text, source, targets);
