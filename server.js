@@ -1,8 +1,10 @@
-require("dotenv").config();
-const express = require("express");
-const OpenAI = require("openai");
-const { Client, middleware } = require("@line/bot-sdk");
-const franc = require("franc");
+import dotenv from "dotenv";
+dotenv.config();
+
+import express from "express";
+import { OpenAI } from "openai";
+import { Client, middleware } from "@line/bot-sdk";
+import franc from "franc";
 
 const app = express();
 
