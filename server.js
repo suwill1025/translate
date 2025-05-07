@@ -1,6 +1,6 @@
 require("dotenv").config();
 const express = require("express");
-const { Configuration, OpenAIApi } = require("openai");
+const OpenAI = require("openai");
 const { Client, middleware } = require("@line/bot-sdk");
 const franc = require("franc");
 
@@ -15,26 +15,21 @@ const lineClient = new Client({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
-const OpenAI = require("openai");
-
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const completion = await openai.chat.completions.create({
-  model: "gpt-3.5-turbo",
-  messages: [{ role: "user", content: prompt }]
-});
-
+// ✅ 正確處理 webhook，先回 200，避免 LINE timeout
 app.post("/webhook", (req, res) => {
-  res.status(200).send("OK"); // Reply immediately to prevent LINE timeout
+  res.status(200).send("OK");
 
   if (!req.body.events || req.body.events.length === 0) return;
- 
+
   Promise.all(req.body.events.map(handleEvent))
     .catch(err => console.error("Event handling error:", err));
 });
 
+// ✅ 包在 async function 中使用 await
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
 
@@ -52,13 +47,13 @@ async function handleEvent(event) {
   }
 
   try {
-    const completion = await openai.createChatCompletion({
+    const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.5
     });
 
-    const replyText = completion.data.choices[0].message.content;
+    const replyText = completion.choices[0].message.content;
 
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
@@ -73,6 +68,7 @@ async function handleEvent(event) {
   }
 }
 
+// 顯示健康檢查訊息
 app.get("/", (req, res) => {
   res.send("✅ LINE ChatGPT Translator is running.");
 });
