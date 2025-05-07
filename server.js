@@ -15,9 +15,16 @@ const lineClient = new Client({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
-const openai = new OpenAIApi(new Configuration({
+const OpenAI = require("openai");
+
+const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-}));
+});
+
+const completion = await openai.chat.completions.create({
+  model: "gpt-3.5-turbo",
+  messages: [{ role: "user", content: prompt }]
+});
 
 app.post("/webhook", (req, res) => {
   res.status(200).send("OK"); // Reply immediately to prevent LINE timeout
