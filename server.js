@@ -19,7 +19,6 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-// ✅ 正確處理 webhook，先回 200，避免 LINE timeout
 app.post("/webhook", (req, res) => {
   res.status(200).send("OK");
 
@@ -29,7 +28,6 @@ app.post("/webhook", (req, res) => {
     .catch(err => console.error("Event handling error:", err));
 });
 
-// ✅ 包在 async function 中使用 await
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
 
@@ -68,7 +66,6 @@ async function handleEvent(event) {
   }
 }
 
-// 顯示健康檢查訊息
 app.get("/", (req, res) => {
   res.send("✅ LINE ChatGPT Translator is running.");
 });
@@ -77,5 +74,3 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server is listening on port ${port}`);
 });
-
-fix: use correct openai await + async
