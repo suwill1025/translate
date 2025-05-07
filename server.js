@@ -39,7 +39,17 @@ async function translateWithGoogle(text, sourceLang, targetLangs) {
     });
 
     const data = await res.json();
-    results.push({ lang: target, text: data.data.translations[0].translatedText });
+
+    // ✅ 檢查是否成功取得 translations
+    if (!data.data || !data.data.translations) {
+      console.error("❌ Google Translate API response error:", JSON.stringify(data));
+      throw new Error(`Google Translate 回應無效，無法取得翻譯結果`);
+    }
+
+    results.push({
+      lang: target,
+      text: data.data.translations[0].translatedText
+    });
   }
 
   return results;
