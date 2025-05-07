@@ -12,7 +12,7 @@ app.use(middleware({
 
 app.use(express.json());
 
-}));
+));
 
 const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
