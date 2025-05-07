@@ -81,7 +81,7 @@ async function handleEvent(event) {
   }
 
   const langMap = {
-    cmn: "zh",
+    cmn: "zh-TW",
     eng: "en",
     ind: "id"
   };
@@ -89,13 +89,25 @@ async function handleEvent(event) {
   const source = langMap[langCode] || "auto";
   let targets = [];
 
-  if (source === "zh") targets = ["en", "id"];
-  else if (source === "id") targets = ["zh", "en"];
-  else targets = ["zh", "id"];
+  if (source === "zh-TW") targets = ["en", "id"];
+  else if (source === "id") targets = ["zh-TW", "en"];
+  else targets = ["zh-TW", "id"];
 
   try {
     const translations = await translateWithGoogle(text, source, targets);
-    const replyText = translations.map(t => `🔤 ${t.lang.toUpperCase()}:\n${t.text}`).join("\n\n");
+    const flagMap = {
+  "en": "🇺🇸",
+  "zh-TW": "🇹🇼",
+  "zh": "🇹🇼", // fallback if needed
+  "id": "🇮🇩"
+};
+
+   const replyText =
+  `🌐 原文：\n${text}\n\n` +
+  translations
+    .map(t => `${flagMap[t.lang] || "🌍"} ${t.lang.toUpperCase()}：\n${t.text}`)
+    .join("\n\n");
+
 
     return lineClient.replyMessage(event.replyToken, {
       type: "text",
