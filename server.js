@@ -22,6 +22,8 @@ const openai = new OpenAIApi(new Configuration({
 app.post("/webhook", (req, res) => {
   res.status(200).send("OK"); // Reply immediately to prevent LINE timeout
 
+  if (!req.body.events || req.body.events.length === 0) return;
+ 
   Promise.all(req.body.events.map(handleEvent))
     .catch(err => console.error("Event handling error:", err));
 });
