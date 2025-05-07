@@ -6,12 +6,10 @@ const franc = require("franc");
 
 const app = express();
 
-// ✅ LINE middleware 要放在 json parser 之前
 app.use(middleware({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 }));
 
-// ✅ json parser 放後面（避免影響簽章驗證）
 app.use(express.json());
 
 }));
