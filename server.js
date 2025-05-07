@@ -20,15 +20,15 @@ const openai = new OpenAI({
 });
 
 app.post("/webhook", (req, res) => {
-  // ✅ 立即回應 200，避免 LINE 認為錯誤
+  // ✅ 一定要在最前面就回傳 200
   res.status(200).send("OK");
 
-  // ✅ 處理空 events 陣列（不用做事）
+  // ✅ 空 events 不做事
   if (!req.body.events || req.body.events.length === 0) {
     return;
   }
 
-  // ✅ 處理有事件時的回應
+  // ✅ 非同步處理 event，不影響回應
   Promise.all(req.body.events.map(handleEvent))
     .catch(err => console.error("Event handling error:", err));
 });
