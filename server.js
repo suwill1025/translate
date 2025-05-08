@@ -3,12 +3,10 @@ dotenv.config();
 
 import express from "express";
 import { Client, middleware } from "@line/bot-sdk";
+import bodyParser from "body-parser";
 import fetch from "node-fetch";
 
 const app = express();
-
-// 不再使用全域 middleware！改為套用在 webhook 路由上
-app.use(express.json());
 
 const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -49,7 +47,7 @@ async function translateWithGemini(text) {
   );
 
   const data = await res.json();
-  console.dir(data, { depth: null }); // 🔍 方便偵錯
+  console.dir(data, { depth: null }); // 🔍 方便除錯
 
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!raw) throw new Error("Gemini 回應錯誤");
@@ -87,17 +85,20 @@ async function translateWithGoogle(text) {
   return outputs;
 }
 
-// ✅ 只對 LINE webhook 套用 middleware
-app.post("/webhook", middleware({
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-}), (req, res) => {
-  res.status(200).send("OK");
+// ✅ 正確使用 middleware + raw bodyParser
+app.post("/webhook",
+  bodyParser.raw({ type: "*/*" }), // ⛔ 不能使用 express.json()！
+  middleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
+  (req, res) => {
+    res.status(200).send("OK");
 
-  if (!req.body.events || req.body.events.length === 0) return;
+    const events = req.body.events;
+    if (!events || events.length === 0) return;
 
-  Promise.all(req.body.events.map(handleEvent))
-    .catch(err => console.error("Event error:", err));
-});
+    Promise.all(events.map(handleEvent))
+      .catch(err => console.error("Event error:", err));
+  }
+);
 
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
@@ -131,4 +132,3 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
-
