@@ -1,5 +1,5 @@
 {
-  "name": "line-gemini-translate-bot", // 您可以考慮更新名稱以反映使用 Gemini
+  "name": "line-gemini-translate-bot",
   "version": "1.0.0",
   "type": "module",
   "main": "server.js",
@@ -7,14 +7,14 @@
     "start": "node server.js"
   },
   "engines": {
-    "node": "18.x" // 保持不變，Gemini SDK 與 Node 18.x 相容
+    "node": "18.x"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.12.0", // 加入 Gemini API 套件 (請使用當時最新的穩定版本)
-    "@line/bot-sdk": "^7.5.0", // 版本保持不變或更新至最新 v7.x/v8.x (若有)
-    "dotenv": "^16.3.1",     // 版本保持不變
-    "express": "^4.18.2",    // 版本保持不變
-    "franc": "^6.1.0",       // 如上所述，請評估是否仍需要此套件
-    "node-fetch": "^3.3.2"   // 版本保持不變
+    "@google/generative-ai": "^0.12.0",
+    "@line/bot-sdk": "^7.5.0",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "franc": "^6.1.0",
+    "node-fetch": "^3.3.2"
   }
 }
