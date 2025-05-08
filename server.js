@@ -7,9 +7,7 @@ import fetch from "node-fetch";
 
 const app = express();
 
-app.use(middleware({
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-}));
+// 不再使用全域 middleware！改為套用在 webhook 路由上
 app.use(express.json());
 
 const lineClient = new Client({
@@ -22,9 +20,9 @@ const GOOGLE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
 
 const targetLangs = ["zh-TW", "en", "id"];
 const flagMap = {
-  "zh-TW": "\uD83C\uDDF9\uD83C\uDDFC",
-  "en": "\uD83C\uDDFA\uD83C\uDDF8",
-  "id": "\uD83C\uDDEE\uD83C\uDDE9"
+  "zh-TW": "🇹🇼",
+  "en": "🇺🇸",
+  "id": "🇮🇩"
 };
 
 async function translateWithGemini(text) {
@@ -39,15 +37,20 @@ async function translateWithGemini(text) {
 
 句子：${text}`;
 
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ parts: [{ text: prompt }] }]
-    })
-  });
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
+    }
+  );
 
   const data = await res.json();
+  console.dir(data, { depth: null }); // 🔍 方便偵錯
+
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!raw) throw new Error("Gemini 回應錯誤");
 
@@ -84,15 +87,21 @@ async function translateWithGoogle(text) {
   return outputs;
 }
 
-app.post("/webhook", (req, res) => {
+// ✅ 只對 LINE webhook 套用 middleware
+app.post("/webhook", middleware({
+  channelSecret: process.env.LINE_CHANNEL_SECRET
+}), (req, res) => {
   res.status(200).send("OK");
+
   if (!req.body.events || req.body.events.length === 0) return;
 
-  Promise.all(req.body.events.map(handleEvent)).catch(err => console.error("Event error:", err));
+  Promise.all(req.body.events.map(handleEvent))
+    .catch(err => console.error("Event error:", err));
 });
 
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
+
   const text = event.message.text.trim();
   let translations = {};
 
@@ -122,3 +131,4 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
+
