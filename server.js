@@ -22,30 +22,22 @@ const GOOGLE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
 
 const targetLangs = ["zh-TW", "en", "id"];
 const flagMap = {
-  "zh-TW": "🇹🇼",
-  "en": "🇺🇸",
-  "id": "🇮🇩"
+  "zh-TW": "\uD83C\uDDF9\uD83C\uDDFC",
+  "en": "\uD83C\uDDFA\uD83C\uDDF8",
+  "id": "\uD83C\uDDEE\uD83C\uDDE9"
 };
 
-// ✅ Gemini 主翻譯
 async function translateWithGemini(text) {
   const prompt = `
-請將以下句子翻譯為：
-1. 繁體中文（zh-TW）
-2. 英文（en）
-3. 印尼文（id）
-
-以 JSON 格式回覆如下（不要顯示原文）：
-
+將下列句子分別翻譯成三種語言：繁體中文 (zh-TW)、英文 (en)、印尼文 (id)。
+請只回傳以下 JSON 格式：
 {
   "zh-TW": "...",
   "en": "...",
   "id": "..."
 }
 
-句子如下：
-${text}
-`;
+句子：${text}`;
 
   const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`, {
     method: "POST",
@@ -57,7 +49,6 @@ ${text}
 
   const data = await res.json();
   const raw = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
   if (!raw) throw new Error("Gemini 回應錯誤");
 
   const jsonMatch = raw.match(/{[\s\S]*}/);
@@ -66,7 +57,6 @@ ${text}
   return JSON.parse(jsonMatch[0]);
 }
 
-// ✅ Google fallback
 async function translateWithGoogle(text) {
   const headers = { "Content-Type": "application/json" };
   const detectRes = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${GOOGLE_API_KEY}`, {
@@ -84,12 +74,7 @@ async function translateWithGoogle(text) {
     const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${GOOGLE_API_KEY}`, {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        q: text,
-        target: lang,
-        format: "text",
-        source: sourceLang
-      })
+      body: JSON.stringify({ q: text, target: lang, format: "text", source: sourceLang })
     });
 
     const data = await res.json();
@@ -99,7 +84,6 @@ async function translateWithGoogle(text) {
   return outputs;
 }
 
-// ✅ 處理 LINE webhook
 app.post("/webhook", (req, res) => {
   res.status(200).send("OK");
   if (!req.body.events || req.body.events.length === 0) return;
