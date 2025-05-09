@@ -7,11 +7,7 @@ import fetch from "node-fetch";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const app = express();
-
-app.use(lineMiddleware({
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-}));
-app.use(express.json());
+app.use(express.json()); // 先處理 JSON 再給指定 middleware
 
 const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -58,7 +54,7 @@ async function detectInputLanguage(text) {
 }
 
 async function translateWithGemini(text, filteredTargets) {
-  const prompt = `請將以下句子分別翻譯成這些語言：${filteredTargets.join("、")}。\n請嚴格依照以下 JSON 格式回傳，不要包含任何 JSON 以外的文字或 markdown 標記：\n{\n  \"zh-TW\": \"...\",\n  \"en\": \"...\",\n  \"id\": \"...\"\n}\n\n要翻譯的句子如下：\n${text}`;
+  const prompt = `請將以下句子分別翻譯成這些語言：${filteredTargets.join("、")}。\n請嚴格依照以下 JSON 格式回傳，不要包含任何 JSON 以外的文字或 markdown 標記：\n{\n  "zh-TW": "...",\n  "en": "...",\n  "id": "..." \n}\n\n要翻譯的句子如下：\n${text}`;
 
   let rawResponseText = "";
   try {
@@ -81,7 +77,7 @@ async function translateWithGemini(text, filteredTargets) {
 
     const translations = {};
     for (const lang of filteredTargets) {
-      if (parsedJson[lang] && typeof parsedJson[lang] === 'string') {
+      if (parsedJson[lang] && typeof parsedJson[lang] === "string") {
         translations[lang] = parsedJson[lang];
       } else {
         translations[lang] = "(Gemini 翻譯失敗)";
@@ -116,44 +112,50 @@ async function translateWithGoogle(text, filteredTargets) {
   return outputs;
 }
 
-app.post("/webhook", async (req, res) => {
-  res.status(200).send("OK");
-  if (!req.body.events || req.body.events.length === 0) return;
+// ✅ 改為只有 /webhook 才套用 LINE middleware
+app.post("/webhook",
+  lineMiddleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
+  async (req, res) => {
+    res.status(200).send("OK");
+    if (!req.body.events || req.body.events.length === 0) return;
 
-  for (const event of req.body.events) {
-    if (event.type !== "message" || event.message.type !== "text") continue;
-    const text = event.message.text.trim();
-    const detectedLang = await detectInputLanguage(text);
+    for (const event of req.body.events) {
+      if (event.type !== "message" || event.message.type !== "text") continue;
+      const text = event.message.text.trim();
+      const detectedLang = await detectInputLanguage(text);
 
-    const langMap = { zh: "zh-TW", "zh-CN": "zh-TW", en: "en", id: "id" };
-    const sourceLangMapped = langMap[detectedLang] || detectedLang;
-    const filteredTargets = targetLangs.filter(lang => lang !== sourceLangMapped);
+      const langMap = { zh: "zh-TW", "zh-CN": "zh-TW", en: "en", id: "id" };
+      const sourceLangMapped = langMap[detectedLang] || detectedLang;
+      const filteredTargets = targetLangs.filter(lang => lang !== sourceLangMapped);
 
-    console.log(`📨 收到訊息: "${text}" (${detectedLang}) → 翻譯為: ${filteredTargets.join(", ")}`);
+      console.log(`📨 收到訊息: "${text}" (${detectedLang}) → 翻譯為: ${filteredTargets.join(", ")}`);
 
-    let translations = await translateWithGemini(text, filteredTargets);
+      let translations = await translateWithGemini(text, filteredTargets);
 
-    const geminiFailed = Object.values(translations).every(v => v.includes("失敗") || v.includes("錯誤"));
-    if (geminiFailed) {
-      console.warn("⚠️ Gemini 全部失敗，改用 Google fallback");
-      translations = await translateWithGoogle(text, filteredTargets);
+      const geminiFailed = Object.values(translations).every(v => v.includes("失敗") || v.includes("錯誤"));
+      if (geminiFailed) {
+        console.warn("⚠️ Gemini 全部失敗，改用 Google fallback");
+        translations = await translateWithGoogle(text, filteredTargets);
+      }
+
+      const replyLines = filteredTargets.map(lang => `${flagMap[lang] || "🌐"} ${translations[lang]}`).join("\n\n");
+
+      await lineClient.replyMessage(event.replyToken, {
+        type: "text",
+        text: replyLines || "⚠️ 無翻譯結果"
+      });
     }
-
-    const replyLines = filteredTargets.map(lang => `${flagMap[lang] || "🌐"} ${translations[lang]}`).join("\n\n");
-
-    await lineClient.replyMessage(event.replyToken, {
-      type: "text",
-      text: replyLines || "⚠️ 無翻譯結果"
-    });
   }
-});
+);
 
-app.get("/", (req, res) => {
-  res.send("✅ LINE 翻譯機器人 (Gemini + Google fallback) 正常運作中");
-});
-
+// ✅ Render 健康檢查用
 app.get("/health", (req, res) => {
   res.status(200).send("OK");
+});
+
+// ✅ 首頁測試路由（非必需，但方便 debug）
+app.get("/", (req, res) => {
+  res.send("✅ LINE 翻譯機器人 (Gemini + Google fallback) 正常運作中");
 });
 
 const port = process.env.PORT || 3000;
