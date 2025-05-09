@@ -7,7 +7,6 @@ import fetch from "node-fetch";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const app = express();
-app.use(express.json());
 
 const lineClient = new Client({
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -112,7 +111,8 @@ async function translateWithGoogle(text, filteredTargets) {
   return outputs;
 }
 
-app.post("/webhook",
+app.post(
+  "/webhook",
   lineMiddleware({ channelSecret: process.env.LINE_CHANNEL_SECRET }),
   async (req, res) => {
     res.status(200).send("OK");
@@ -146,6 +146,9 @@ app.post("/webhook",
     }
   }
 );
+
+// 其他路由才掛 express.json()
+app.use("/", express.json());
 
 const privateHealthPath = "/health-" + process.env.HEALTH_TOKEN;
 app.get(privateHealthPath, (req, res) => {
