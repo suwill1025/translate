@@ -152,6 +152,10 @@ app.get("/", (req, res) => {
   res.send("✅ LINE 翻譯機器人 (Gemini + Google fallback) 正常運作中");
 });
 
+app.get("/health", (req, res) => {
+  res.status(200).send("OK");
+});
+
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
