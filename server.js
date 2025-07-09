@@ -4,6 +4,7 @@ dotenv.config();
 import express from "express";
 import { Client, middleware as lineMiddleware } from "@line/bot-sdk";
 import fetch from "node-fetch";
+import cron from "node-cron"; // 🔁 自動喚醒用
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const app = express();
@@ -18,6 +19,7 @@ if (!GEMINI_API_KEY) {
   console.error("錯誤：GEMINI_API_KEY 未設定！請檢查您的 .env 檔案。");
   process.exit(1);
 }
+
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({
   model: "gemini-1.5-flash-latest",
@@ -53,7 +55,7 @@ async function detectInputLanguage(text) {
 }
 
 async function translateWithGemini(text, filteredTargets) {
-  const prompt = `請將以下句子分別翻譯成這些語言：${filteredTargets.join("、")}。\n請嚴格依照以下 JSON 格式回傳，不要包含任何 JSON 以外的文字或 markdown 標記：\n{\n  \"zh-TW\": \"...\",\n  \"en\": \"...\",\n  \"id\": \"...\" \n}\n\n要翻譯的句子如下：\n${text}`;
+  const prompt = `請將以下句子分別翻譯成這些語言：${filteredTargets.join("、")}。\n請嚴格依照以下 JSON 格式回傳，不要包含任何 JSON 以外的文字或 markdown 標記：\n{\n  "zh-TW": "...",\n  "en": "...",\n  "id": "..." \n}\n\n要翻譯的句子如下：\n${text}`;
 
   let rawResponseText = "";
   try {
@@ -147,7 +149,7 @@ app.post(
   }
 );
 
-// 其他路由才掛 express.json()
+// 設定 JSON middleware 僅限其他路由
 app.use("/", express.json());
 
 const privateHealthPath = "/health-" + process.env.HEALTH_TOKEN;
@@ -163,3 +165,15 @@ const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 Server listening on port ${port}`);
 });
+
+// 🔁 每 15 分鐘 ping 自己一次，避免 Render 休眠
+cron.schedule("*/15 * * * *", async () => {
+  const url = process.env.RENDER_EXTERNAL_URL || "https://your-app-name.onrender.com"; // 記得換成你的網址
+  try {
+    const res = await fetch(url);
+    console.log(`⏰ 自我喚醒成功：HTTP ${res.status}`);
+  } catch (err) {
+    console.error("⚠️ 自我喚醒失敗：", err.message);
+  }
+});
+
