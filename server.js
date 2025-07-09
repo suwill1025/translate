@@ -168,7 +168,7 @@ app.listen(port, () => {
 
 // 🔁 每 15 分鐘 ping 自己一次，避免 Render 休眠
 cron.schedule("*/15 * * * *", async () => {
-  const url = process.env.RENDER_EXTERNAL_URL || "https://your-app-name.onrender.com"; // 記得換成你的網址
+  const url = process.env.RENDER_EXTERNAL_URL || "https://translate-d8gq.onrender.com"; // 記得換成你的網址
   try {
     const res = await fetch(url);
     console.log(`⏰ 自我喚醒成功：HTTP ${res.status}`);
