@@ -24,7 +24,7 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
-// 系統指令：口語化、自然、精確
+// 系統指令：適度保留要求，平衡品質與速度
 const SYSTEM_INSTRUCTION = `你是一個專業且可靠的多語種翻譯引擎。
 主要任務：將使用者輸入的文本精確翻譯成繁體中文 (zh-TW)、英文 (en) 和印尼文 (id)。
 
