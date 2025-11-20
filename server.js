@@ -45,7 +45,7 @@ const SYSTEM_INSTRUCTION = `你是一個專業且可靠的多語種翻譯引擎�
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({
   // 如果更新套件後還是 404，可以試試 "gemini-1.5-flash-001" 或是 "gemini-pro"
-  model: "gemini-1.5-flash", 
+  model: "gemini-2.5-flash", 
   systemInstruction: SYSTEM_INSTRUCTION,
   safetySettings: [
     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
