@@ -50,7 +50,7 @@ const SYSTEM_INSTRUCTION = `你是一個專業且可靠的多語種翻譯引擎�
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-flash-latest", // 使用 Flash 模型保持速度
+  model: "gemini-1.5-flash", // 使用 Flash 模型保持速度
   systemInstruction: SYSTEM_INSTRUCTION,
   safetySettings: [
     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
