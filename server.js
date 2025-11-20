@@ -8,16 +8,11 @@ import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/ge
 
 const app = express();
 
-// 設定 LINE Middleware
+// 設定 LINE Config
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-
-app.use(lineMiddleware({
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-}));
-app.use(express.json());
 
 // 初始化 LINE Client
 const lineClient = new Client(lineConfig);
@@ -29,18 +24,17 @@ if (!GEMINI_API_KEY) {
   process.exit(1);
 }
 
-// *** 強化後的系統指令 (System Instruction) ***
-// 專注於自然與精確度，並強制 JSON 輸出
+// 系統指令：口語化、自然、精確
 const SYSTEM_INSTRUCTION = `你是一個專業且可靠的多語種翻譯引擎。
 主要任務：將使用者輸入的文本精確翻譯成繁體中文 (zh-TW)、英文 (en) 和印尼文 (id)。
 
 風格與準確性要求：
-1. 確保翻譯結果是**最自然、最道地、最口語化**的表達，絕對避免生硬的機器直譯。
-2. 必須嚴格保持原文本的**完整語意和語氣**，不可遺漏任何細節。
+1. 確保翻譯結果是**最自然、最道地、最口語化**的表達。
+2. 必須嚴格保持原文本的完整語意。
 3. 語法必須正確無誤。
 
 輸出要求：
-- 必須以嚴格的純 JSON 格式回覆，不含任何 Markdown 標記 (如 \`\`\`json) 或額外文字。
+- 必須以嚴格的純 JSON 格式回覆，不含 Markdown。
 - 格式範例：
 {
   "zh-TW": "...",
@@ -50,7 +44,8 @@ const SYSTEM_INSTRUCTION = `你是一個專業且可靠的多語種翻譯引擎�
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-1.5-pro-latest", // 使用 Flash 模型保持速度
+  // 如果更新套件後還是 404，可以試試 "gemini-1.5-flash-001" 或是 "gemini-pro"
+  model: "gemini-1.5-flash", 
   systemInstruction: SYSTEM_INSTRUCTION,
   safetySettings: [
     { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
@@ -72,22 +67,19 @@ const flagMap = {
  * 使用 Gemini API 進行翻譯
  */
 async function translateWithGemini(text) {
-  // Prompt 簡化，主要依賴 SYSTEM_INSTRUCTION
   const prompt = `翻譯以下句子：\n${text}`;
-
-  let rawResponseText = "";
+  
   try {
     const chat = geminiModel.startChat();
     const result = await chat.sendMessage(prompt);
     const response = result.response;
-    rawResponseText = response.text();
+    const rawResponseText = response.text();
 
     let parsedJson;
     try {
-      // 嘗試直接解析
       parsedJson = JSON.parse(rawResponseText);
     } catch (e) {
-      console.warn("Gemini 回應非純 JSON，嘗試提取:", rawResponseText);
+      // 嘗試提取 JSON
       const match = rawResponseText.match(/{[\s\S]*}/); 
       if (match && match[0]) {
         parsedJson = JSON.parse(match[0]);
@@ -112,8 +104,6 @@ async function translateWithGemini(text) {
 
   } catch (error) {
     console.error("Gemini API 錯誤:", error.message);
-    if (rawResponseText) console.error("原始回傳:", rawResponseText);
-    
     const errorTranslations = {};
     for (const lang of targetLangs) {
       errorTranslations[lang] = "(Gemini API 錯誤)";
@@ -135,7 +125,6 @@ async function translateWithGoogle(text) {
   let sourceLang = "auto";
 
   try {
-    // 1. 偵測語言
     const detectRes = await fetch(`https://translation.googleapis.com/language/translate/v2/detect?key=${GOOGLE_TRANSLATE_API_KEY}`, {
       method: "POST", headers, body: JSON.stringify({ q: text })
     });
@@ -150,7 +139,6 @@ async function translateWithGoogle(text) {
   }
 
   const outputs = {};
-  // 2. 執行翻譯
   for (const lang of targetLangs) {
     if (lang.startsWith(sourceLang) && sourceLang !== "auto") { 
         outputs[lang] = text; 
@@ -170,26 +158,51 @@ async function translateWithGoogle(text) {
       const data = await res.json();
       outputs[lang] = data.data?.translations?.[0]?.translatedText || "(Google 翻譯錯誤)";
     } catch (e) {
-        console.error(`Google Translate Error (${lang}):`, e.message);
         outputs[lang] = "(Google API 失敗)";
     }
   }
   return outputs;
 }
 
-// --- Webhook ---
-app.post("/webhook", (req, res) => {
+// --- 路由設定 ---
+
+// 1. Webhook 路由：只有這裡才使用 lineMiddleware
+// 注意：lineMiddleware 必須放在這個路徑裡，不能全域使用，否則會導致 no signature 錯誤
+app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   res.status(200).send("OK");
+  
   if (!req.body.events || req.body.events.length === 0) return;
-  req.body.events.forEach(event => handleEvent(event).catch(console.error));
+  
+  req.body.events.forEach(event => handleEvent(event).catch(err => {
+    console.error("Event Error:", err);
+  }));
 });
+
+// 2. 一般路由 (給 Render 健康檢查用，不需要簽章)
+app.get("/", (req, res) => {
+  res.send("✅ LINE Translation Bot is running.");
+});
+
+// 3. 全域錯誤處理 (防止 Crash)
+app.use((err, req, res, next) => {
+  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
+    console.error('Bad JSON');
+    return res.status(400).send({ status: 400, message: err.message }); // Bad request
+  }
+  // 處理 LINE Signature 錯誤
+  if (err.message === 'no signature' || err.message === 'signature validation failed') {
+    console.error('⚠️ Signature validation failed. (Is someone accessing webhook directly?)');
+    return res.status(401).send("Signature validation failed");
+  }
+  next();
+});
+
 
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
   const text = event.message.text.trim();
   
   console.log(`📨 收到: "${text}"`);
-  console.log("⚙️ 使用 Gemini...");
   let translations = await translateWithGemini(text);
 
   // 檢查是否失敗
@@ -200,19 +213,23 @@ async function handleEvent(event) {
   }
 
   const replyLines = targetLangs
-    .filter(lang => translations[lang] && !translations[lang].includes("(失敗)") && !translations[lang].includes("(錯誤)"))
+    .filter(lang => {
+        const result = translations[lang];
+        if (!result || result.includes("(失敗)") || result.includes("(錯誤)")) return false;
+        // 排除與原文相同的翻譯 (忽略大小寫與空白)
+        if (result.trim().toLowerCase() === text.trim().toLowerCase()) return false;
+        return true;
+    })
     .map(lang => `${flagMap[lang] || "🌐"} ${translations[lang]}`)
     .join("\n\n");
 
   if (!replyLines) {
-    return lineClient.replyMessage(event.replyToken, { type: "text", text: "無法翻譯，請稍後再試。" });
+    return lineClient.replyMessage(event.replyToken, { type: "text", text: "無需翻譯或翻譯失敗。" });
   }
    
   console.log(`💬 回覆:\n${replyLines}`);
   return lineClient.replyMessage(event.replyToken, { type: "text", text: replyLines });
 }
-
-app.get("/", (req, res) => res.send("✅ LINE Translation Bot (Gemini) is running."));
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
