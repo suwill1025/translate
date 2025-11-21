@@ -101,8 +101,8 @@ async function translateWithGemini(text) {
         systemInstruction: SYSTEM_INSTRUCTION,
     }).startChat();
     
-    // 使用 sendMessage 方法進行呼叫
-    const result = await chat.sendMessage({ role: "user", parts: [{ text: prompt }] });
+    // FIX: 直接傳遞 prompt 字串給 sendMessage
+    const result = await chat.sendMessage(prompt);
     const rawResponseText = result.response.text();
 
     let parsedJson;
