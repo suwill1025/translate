@@ -2,55 +2,31 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import express from "express";
-import { Client, middleware as lineMiddleware } from "@line/bot-sdk"; 
+import { Client, middleware as lineMiddleware } from "@line/bot-sdk";
 import fetch from "node-fetch";
 import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 
 const app = express();
 
-// 設定 LINE Config
+// --- 設定區 ---
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-// 初始化 LINE Client
 const lineClient = new Client(lineConfig);
 
-// --- Gemini API 設定 ---
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 if (!GEMINI_API_KEY) {
-  console.error("錯誤：GEMINI_API_KEY 未設定！請檢查您的 .env 檔案。");
+  console.error("❌ 錯誤：GEMINI_API_KEY 未設定！");
   process.exit(1);
 }
 
-// 系統指令：適度保留要求，平衡品質與速度
-const SYSTEM_INSTRUCTION = `你是一個專業且可靠的多語種翻譯引擎。
-主要任務：將使用者輸入的文本精確翻譯成繁體中文 (zh-TW)、英文 (en) 和印尼文 (id)。
-
-輸出要求：
-- 必須以嚴格的純 JSON 格式回覆，不含 Markdown。
-- 格式範例：
-{
-  "zh-TW": "...",
-  "en": "...",
-  "id": "..."
-}`;
+const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
 
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-// 注意：這裡只設置了通用模型，實際翻譯時會在 translateWithGemini 中使用 startChat 確保系統指令生效。
-const geminiModel = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash", 
-  systemInstruction: SYSTEM_INSTRUCTION,
-  safetySettings: [
-    { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-    { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
-  ],
-});
 
-const GOOGLE_TRANSLATE_API_KEY = process.env.GOOGLE_TRANSLATE_API_KEY;
+// 設定目標語言與國旗
 const targetLangs = ["zh-TW", "en", "id"];
 const flagMap = {
   "zh-TW": "🇹🇼",
@@ -58,208 +34,212 @@ const flagMap = {
   "id": "🇮🇩"
 };
 
-/**
- * 使用 Google Translate API 偵測語言
- * @returns {string} 偵測到的語言代碼 (e.g., 'zh-TW', 'en')
- */
-async function detectLanguage(text) {
-    // 檢查是否有設定備援 API 金鑰，如果沒有，則無法偵測語言
-    if (!GOOGLE_TRANSLATE_API_KEY) return null;
-    const headers = { "Content-Type": "application/json" };
-    try {
-        const detectRes = await fetch(`https://translation.googleapis.com/language/translate/v2/detect?key=${GOOGLE_TRANSLATE_API_KEY}`, {
-            method: "POST", headers, body: JSON.stringify({ q: text })
-        });
-        if (detectRes.ok) {
-            const detectData = await detectRes.json();
-            if (detectData.data?.detections?.[0]?.[0]) {
-                const detectedLang = detectData.data.detections[0][0].language;
-                // Google Translate 對繁體中文回傳 'zh-TW'，對簡體中文回傳 'zh-CN'。
-                // 由於我們的目標是 'zh-TW'，我們將所有 'zh' 或 'zh-CN' 都視為繁體中文的來源。
-                if (detectedLang === 'zh' || detectedLang === 'zh-CN') return 'zh-TW';
-                return detectedLang;
-            }
-        }
-    } catch (e) {
-        console.error("Google Detect Error:", e.message);
-    }
-    return null;
-}
+// --- 系統指令 (System Instruction) ---
+// 修改點：要求 Gemini 回傳巢狀 JSON，包含 "detected_lang"
+const SYSTEM_INSTRUCTION = `你是一個專業的多語種翻譯引擎。
+任務：
+1. 偵測使用者輸入的語言。
+2. 將文本翻譯成繁體中文 (zh-TW)、英文 (en) 和印尼文 (id)。
+
+輸出必須是純 JSON 格式，不要使用 Markdown，格式如下：
+{
+  "detected_lang": "偵測到的語言代碼 (如 zh, en, id, ja)",
+  "translations": {
+    "zh-TW": "...",
+    "en": "...",
+    "id": "..."
+  }
+}`;
 
 /**
- * 使用 Gemini API 進行翻譯
+ * 使用 Gemini API 進行翻譯與語言偵測
  */
 async function translateWithGemini(text) {
-  // 將所有語言代碼標記為目標語言
-  const prompt = `翻譯以下句子，並嚴格遵循 JSON 格式，將繁體中文、英文、印尼文的翻譯結果分別標記在 "zh-TW", "en", "id" 欄位中。
-句子：${text}`;
+  const prompt = `請翻譯以下句子：\n${text}`;
   
   try {
-    // 每次呼叫都創建一個新的 Chat 實例，確保系統指令被正確應用
     const chat = genAI.getGenerativeModel({
         model: "gemini-2.5-flash", 
         systemInstruction: SYSTEM_INSTRUCTION,
+        safetySettings: [
+            { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+            { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
+        ],
     }).startChat();
     
-    // FIX: 直接傳遞 prompt 字串給 sendMessage
     const result = await chat.sendMessage(prompt);
     const rawResponseText = result.response.text();
 
     let parsedJson;
     try {
-      parsedJson = JSON.parse(rawResponseText);
+      // 嘗試解析 JSON，並處理可能包含的 Markdown 標記
+      const cleanJson = rawResponseText.replace(/```json|```/g, "").trim();
+      parsedJson = JSON.parse(cleanJson);
     } catch (e) {
-      // 嘗試提取 JSON (處理模型偶爾會輸出 Markdown 格式的 JSON)
+      // 二次嘗試：用正則抓取大括號內容
       const match = rawResponseText.match(/\{[\s\S]*\}/); 
       if (match && match[0]) {
-        try {
-            parsedJson = JSON.parse(match[0]);
-        } catch (e_inner) {
-            throw new Error("Gemini API 回傳的 JSON 無法解析");
-        }
+        parsedJson = JSON.parse(match[0]);
       } else {
-        throw new Error("Gemini API 回傳格式錯誤或非 JSON");
+        throw new Error("無法解析 JSON");
       }
     }
     
+    // 驗證結構
+    if (!parsedJson.translations) throw new Error("JSON 缺少 translations 欄位");
+
     const translations = {};
     let oneSuccess = false;
+    
     for (const lang of targetLangs) {
-      if (parsedJson[lang] && typeof parsedJson[lang] === 'string') {
-        translations[lang] = parsedJson[lang].trim(); // 去除翻譯結果前後空白
+      const t = parsedJson.translations[lang];
+      if (t && typeof t === 'string') {
+        translations[lang] = t.trim();
         oneSuccess = true;
       } else {
         translations[lang] = "(Gemini 翻譯失敗)";
       }
     }
-    
-    if (!oneSuccess) throw new Error("Gemini 解析後未找到有效翻譯");
-    return translations;
+
+    if (!oneSuccess) throw new Error("沒有任何有效翻譯");
+
+    return {
+        success: true,
+        detectedLang: parsedJson.detected_lang || null,
+        translations: translations
+    };
 
   } catch (error) {
-    console.error("Gemini API 錯誤:", error.message);
-    const errorTranslations = {};
-    for (const lang of targetLangs) {
-      errorTranslations[lang] = "(Gemini API 錯誤)";
-    }
-    return errorTranslations;
+    console.error("⚠️ Gemini API 錯誤:", error.message);
+    // 建構錯誤回傳物件
+    const errorTrans = {};
+    targetLangs.forEach(l => errorTrans[l] = "(Gemini 錯誤)");
+    return { success: false, detectedLang: null, translations: errorTrans };
   }
 }
 
 /**
- * 使用 Google Translate API v2 (備援)
+ * [備援] 使用 Google Translate API 偵測語言
+ */
+async function detectLanguageGoogle(text) {
+    if (!GOOGLE_TRANSLATE_API_KEY) return null;
+    try {
+        const res = await fetch(`https://translation.googleapis.com/language/translate/v2/detect?key=${GOOGLE_TRANSLATE_API_KEY}`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text })
+        });
+        const data = await res.json();
+        const lang = data.data?.detections?.[0]?.[0]?.language;
+        // 統一繁簡中代碼
+        if (lang === 'zh' || lang === 'zh-CN') return 'zh-TW';
+        return lang;
+    } catch (e) {
+        console.error("Google Detect Error:", e.message);
+        return null;
+    }
+}
+
+/**
+ * [備援] 使用 Google Translate API 進行翻譯
  */
 async function translateWithGoogle(text, sourceLang) { 
-  if (!GOOGLE_TRANSLATE_API_KEY) {
-    console.warn("未設定 GOOGLE_TRANSLATE_API_KEY，無法備援。");
-    return targetLangs.reduce((acc, lang) => ({...acc, [lang]: "(備援未設定)"}), {});
-  }
+  if (!GOOGLE_TRANSLATE_API_KEY) return targetLangs.reduce((acc, l) => ({...acc, [l]: "(備援未設定)"}), {});
   
-  const headers = { "Content-Type": "application/json" };
   const outputs = {};
-  
   for (const lang of targetLangs) {
-    // 如果偵測到的語言與目標語言相同，則不需要翻譯
+    // 如果已知來源語言且與目標相同，直接填入原文 (後續會被過濾)
     if (sourceLang && lang.startsWith(sourceLang)) { 
         outputs[lang] = text; 
         continue;
     }
-    
     try {
       const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${GOOGLE_TRANSLATE_API_KEY}`, {
         method: "POST",
-        headers,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ q: text, target: lang, format: "text", source: sourceLang || "auto" })
       });
-
-      if (!res.ok) {
-        outputs[lang] = "(Google 翻譯失敗)";
-        continue;
-      }
       const data = await res.json();
-      outputs[lang] = data.data?.translations?.[0]?.translatedText || "(Google 翻譯錯誤)";
+      outputs[lang] = data.data?.translations?.[0]?.translatedText || "(Google 失敗)";
     } catch (e) {
-        outputs[lang] = "(Google API 失敗)";
+        outputs[lang] = "(Google API 錯誤)";
     }
   }
   return outputs;
 }
 
-// --- 路由設定 ---
+// --- 路由 ---
 
-// 1. Webhook 路由：只有這裡才使用 lineMiddleware
 app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   res.status(200).send("OK");
-  
-  if (!req.body.events || req.body.events.length === 0) return;
-  
-  req.body.events.forEach(event => handleEvent(event).catch(err => {
-    console.error("Event Error:", err);
-  }));
+  if (!req.body.events) return;
+  req.body.events.forEach(event => handleEvent(event).catch(console.error));
 });
 
-// 2. 一般路由 (給 Render 健康檢查用)
-app.get("/", (req, res) => {
-  res.send("✅ LINE Translation Bot is running.");
-});
+app.get("/", (req, res) => res.send("✅ Bot is running."));
 
-// 3. 全域錯誤處理 (防止 Crash)
-app.use((err, req, res, next) => {
-  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    console.error('Bad JSON');
-    return res.status(400).send({ status: 400, message: err.message });
-  }
-  if (err.message === 'no signature' || err.message === 'signature validation failed') {
-    console.error('⚠️ Signature validation failed. (Is someone accessing webhook directly?)');
-    return res.status(401).send("Signature validation failed");
-  }
-  next();
-});
-
+// --- 主邏輯 ---
 
 async function handleEvent(event) {
   if (event.type !== "message" || event.message.type !== "text") return;
   const text = event.message.text.trim();
   
-  console.log(`📨 收到: "${text}"`);
+  console.log(`📨 收到訊息: "${text}"`);
   
-  // 步驟 1: 偵測原始語言 (使用 Google Translate API 偵測)
-  const sourceLang = await detectLanguage(text);
-  console.log(`🔍 偵測到原始語言: ${sourceLang}`);
+  let translations;
+  let sourceLang;
 
-  // 步驟 2: 進行 Gemini 翻譯
-  let translations = await translateWithGemini(text);
-
-  // 步驟 3: 檢查是否失敗並切換備援
-  const geminiFailed = targetLangs.every(lang => translations[lang].includes("(Gemini"));
-  if (geminiFailed) {
-    console.warn("⚠️ Gemini 失敗，切換至 Google...");
-    translations = await translateWithGoogle(text, sourceLang); // 傳入 sourceLang
+  // 1. 優先使用 Gemini 翻譯 + 偵測
+  const geminiResult = await translateWithGemini(text);
+  
+  if (geminiResult.success) {
+      console.log("✅ Gemini 成功");
+      translations = geminiResult.translations;
+      sourceLang = geminiResult.detectedLang;
+  } else {
+      // 2. Gemini 失敗，啟動 Google 備援
+      console.log("⚠️ Gemini 失敗，切換至 Google 備援");
+      sourceLang = await detectLanguageGoogle(text); // 備援時才呼叫 Google Detect
+      translations = await translateWithGoogle(text, sourceLang);
   }
 
-  // 步驟 4: 篩選並格式化回覆
+  console.log(`🔍 偵測語言: ${sourceLang || "未知"}`);
+
+  // 3. 過濾與排版 (關鍵修改區)
   const replyLines = targetLangs
     .filter(lang => {
         const result = translations[lang];
-        // 1. 排除翻譯失敗的結果
-        if (!result || result.includes("(失敗)") || result.includes("(錯誤)")) return false;
         
-        // 2. 排除原文語言的翻譯結果（例如輸入中文，就不回覆中文翻譯）
-        // 這裡使用 startsWith 是因為 Google Detect 有時回傳 zh-CN, zh, zh-TW
-        if (sourceLang && lang.startsWith(sourceLang)) {
-            return false;
+        // A. 基本過濾：排除無效結果
+        if (!result || result.includes("(失敗)") || result.includes("(錯誤)")) return false;
+
+        // B. 語言代碼過濾：如果目標語言就是來源語言，排除
+        if (sourceLang) {
+            const s = sourceLang.toLowerCase();
+            const t = lang.toLowerCase();
+            if (t.startsWith(s)) return false; // en-US vs en
+            if ((s === 'zh' || s === 'zh-cn') && t === 'zh-tw') return false; // 中文特例
         }
 
-        // 3. 排除與原文內容完全一樣的翻譯結果（作為額外保險）
-        if (result.trim().toLowerCase() === text.trim().toLowerCase()) return false;
+        // C. 強力內容比對過濾 (解決標點符號差異導致過濾失敗的問題)
+        // 正規表達式：移除所有非字母(L)和非數字(N)的字元
+        const normalize = (str) => str.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+        
+        const cleanInput = normalize(text);
+        const cleanResult = normalize(result);
+
+        // 如果正規化後的內容一樣 (例如 "Hello!" vs "hello")，則視為相同，過濾掉
+        if (cleanInput === cleanResult) return false;
         
         return true;
     })
     .map(lang => `${flagMap[lang] || "🌐"} ${translations[lang]}`)
     .join("\n\n");
 
+  // 如果沒有任何結果 (可能全被過濾了)，則不回覆或回覆提示
   if (!replyLines) {
-    return lineClient.replyMessage(event.replyToken, { type: "text", text: "無需翻譯或翻譯失敗。" });
+    console.log("🚫 無需翻譯 (結果與原文相同)");
+    return; // 選擇不回覆，避免洗版
   }
     
   console.log(`💬 回覆:\n${replyLines}`);
