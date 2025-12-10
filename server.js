@@ -62,9 +62,9 @@ async function translateWithGemini(text) {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // 使用最穩定的 gemini-1.5-flash
+      // ★★★ 關鍵修改：改用 latest 後綴，相容性更高 ★★★
       const chat = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", 
+        model: "gemini-1.5-flash-latest", 
         systemInstruction: SYSTEM_INSTRUCTION,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -83,7 +83,6 @@ async function translateWithGemini(text) {
         const cleanJson = rawResponseText.replace(/```json|```/g, "").trim();
         parsedJson = JSON.parse(cleanJson);
       } catch (e) {
-        // 二次嘗試：用正則抓取大括號內容
         const match = rawResponseText.match(/\{[\s\S]*\}/);
         if (match && match[0]) {
           parsedJson = JSON.parse(match[0]);
@@ -92,7 +91,6 @@ async function translateWithGemini(text) {
         }
       }
 
-      // 驗證結構
       if (!parsedJson.translations) throw new Error("JSON 缺少 translations 欄位");
 
       const translations = {};
@@ -117,17 +115,15 @@ async function translateWithGemini(text) {
       };
 
     } catch (error) {
-      // 錯誤處理與重試邏輯
       const isRetryable = error.message.includes('503') || error.message.includes('overloaded') || error.message.includes('500');
       
       if (isRetryable && attempt < maxRetries) {
-        const waitTime = attempt * 1000; // 第1次等1秒，第2次等2秒...
-        console.warn(`⚠️ Gemini 忙碌 (503/Overloaded)，第 ${attempt} 次重試，等待 ${waitTime}ms...`);
+        const waitTime = attempt * 1000;
+        console.warn(`⚠️ Gemini 忙碌，第 ${attempt} 次重試，等待 ${waitTime}ms...`);
         await sleep(waitTime);
-        continue; // 進入下一次迴圈
+        continue;
       } else {
         console.error(`❌ Gemini 最終失敗 (嘗試 ${attempt} 次):`, error.message);
-        // 如果是最後一次嘗試，或錯誤不可重試，才回傳失敗物件
         if (attempt === maxRetries || !isRetryable) {
             const errorTrans = {};
             targetLangs.forEach(l => errorTrans[l] = "(Gemini 錯誤)");
@@ -151,9 +147,7 @@ async function detectLanguageGoogle(text) {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ q: text })
     });
     const data = await res.json();
-    
     if (data.error) throw new Error(JSON.stringify(data.error));
-
     const lang = data.data?.detections?.[0]?.[0]?.language;
     if (lang === 'zh' || lang === 'zh-CN') return 'zh-TW';
     return lang;
@@ -171,19 +165,16 @@ async function translateWithGoogle(text, sourceLang) {
 
   const outputs = {};
   for (const lang of targetLangs) {
-    // 如果已知來源語言且與目標相同，直接填入原文 (後續會被過濾)
     if (sourceLang && lang.startsWith(sourceLang)) {
       outputs[lang] = text;
       continue;
     }
     try {
       const res = await fetch(`https://translation.googleapis.com/language/translate/v2?key=${GOOGLE_TRANSLATE_API_KEY}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ q: text, target: lang, format: "text", source: sourceLang || "auto" })
       });
       const data = await res.json();
-      
       if (data.error) {
          console.error(`Google Translate API Error (${lang}):`, data.error.message);
          outputs[lang] = "(Google API 錯誤)";
@@ -206,7 +197,7 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   req.body.events.forEach(event => handleEvent(event).catch(console.error));
 });
 
-app.get("/", (req, res) => res.send("✅ Bot is running with Gemini 1.5 Flash (Stable) & Retry Logic."));
+app.get("/", (req, res) => res.send("✅ Bot is running with Gemini 1.5 Flash Latest (Stable)."));
 
 // --- 主邏輯 ---
 
@@ -219,7 +210,7 @@ async function handleEvent(event) {
   let translations;
   let sourceLang;
 
-  // 1. 優先使用 Gemini 翻譯 + 偵測 (含重試)
+  // 1. 優先使用 Gemini 翻譯 + 偵測
   const geminiResult = await translateWithGemini(text);
 
   if (geminiResult.success) {
@@ -239,32 +230,24 @@ async function handleEvent(event) {
   const replyLines = targetLangs
     .filter(lang => {
       const result = translations[lang];
-
-      // A. 基本過濾
       if (!result || result.includes("(失敗)") || result.includes("(錯誤)") || result.includes("(連線錯誤)") || result.includes("(備援未設定)")) return false;
-
-      // B. 語言代碼過濾
       if (sourceLang) {
         const s = sourceLang.toLowerCase();
         const t = lang.toLowerCase();
         if (t.startsWith(s)) return false;
         if ((s === 'zh' || s === 'zh-cn') && t === 'zh-tw') return false;
       }
-
-      // C. 強力內容比對過濾
       const normalize = (str) => str.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
       const cleanInput = normalize(text);
       const cleanResult = normalize(result);
-
       if (cleanInput === cleanResult) return false;
-
       return true;
     })
     .map(lang => `${flagMap[lang] || "🌐"} ${translations[lang]}`)
     .join("\n\n");
 
   if (!replyLines) {
-    console.log("🚫 無需翻譯 (結果與原文相同或過濾後為空)");
+    console.log("🚫 無需翻譯");
     return;
   }
 
