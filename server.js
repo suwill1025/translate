@@ -64,7 +64,7 @@ async function translateWithGemini(text) {
     try {
       // 使用 1.5-flash-8b (速度最快，適合翻譯)
       const chat = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash-8b", 
+        model: "gemini-1.5-flash", 
         systemInstruction: SYSTEM_INSTRUCTION,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
