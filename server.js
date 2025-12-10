@@ -62,9 +62,9 @@ async function translateWithGemini(text) {
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      // 使用 1.5-flash
+      // 使用最穩定的 gemini-1.5-flash
       const chat = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash-latest", 
+        model: "gemini-1.5-flash", 
         systemInstruction: SYSTEM_INSTRUCTION,
         safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -206,7 +206,7 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   req.body.events.forEach(event => handleEvent(event).catch(console.error));
 });
 
-app.get("/", (req, res) => res.send("✅ Bot is running with Gemini 1.5 Flash 8b & Retry Logic."));
+app.get("/", (req, res) => res.send("✅ Bot is running with Gemini 1.5 Flash (Stable) & Retry Logic."));
 
 // --- 主邏輯 ---
 
