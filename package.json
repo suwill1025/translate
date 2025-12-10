@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "LINE Bot with Gemini 1.5 Flash",
   "main": "server.js",
+  "type": "module",
   "scripts": {
     "start": "node server.js"
   },
