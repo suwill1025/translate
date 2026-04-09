@@ -1,12 +1,11 @@
-// VERSION: 4.0 (純淨文字版：防塞車 + 隱藏原文 + 啟動保護)
-import "dotenv/config";
+// VERSION: 4.1 (移除 dotenv 依賴，徹底解決啟動崩潰)
 import express from "express";
 import { Client, middleware as lineMiddleware } from "@line/bot-sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const app = express();
 
-// 🛡️ 啟動保護：避免啟動瞬間抓不到變數而崩潰 (解決 8080 錯誤)
+// 🛡️ 啟動保護：雲端環境會自動讀取 process.env，若無則套用 DUMMY 防止崩潰
 const lineConfig = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN || "DUMMY_TOKEN",
   channelSecret: process.env.LINE_CHANNEL_SECRET || "DUMMY_SECRET"
@@ -53,11 +52,11 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   res.status(200).send("OK");
   
   req.body.events.forEach(async (event) => {
-    // 🛑 核心還原：只處理純文字訊息，忽略貼圖、圖片、語音
+    // 🛑 確保只處理純文字
     if (event.type !== "message" || event.message.type !== "text") return;
     
     if (lineConfig.channelAccessToken === "DUMMY_TOKEN") {
-       console.error("❌ 警告：未讀取到環境變數！");
+       console.error("❌ 警告：未讀取到 LINE 環境變數！");
        return; 
     }
 
@@ -86,9 +85,9 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   });
 });
 
-app.get("/", (req, res) => res.send("✅ v4.0 (Pure Text Edition) is Online."));
+app.get("/", (req, res) => res.send("✅ v4.1 (Cloud Optimized Edition) is Online."));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 v4.0 Running on Port ${PORT}`);
+  console.log(`🚀 v4.1 Running on Port ${PORT}`);
 });
