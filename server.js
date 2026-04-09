@@ -50,9 +50,12 @@ async function translateWithGemini(text) {
   const prompt = text; // 這裡也不用多廢話了，直接丟原文給它，它看得懂
 
   try {
-    const chat = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash", // ✅ 維持這個你實測成功的版本
-      systemInstruction: SYSTEM_INSTRUCTION,
+   const chat = genAI.getGenerativeModel({
+  model: "gemini-3-flash-preview", // 1. 換掉這裡
+  systemInstruction: SYSTEM_INSTRUCTION,
+  generationConfig: { responseMimeType: "application/json" }, // 2. 多加這行，保證只出 JSON
+  // ... 其他不變
+})
       safetySettings: [
         { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
         { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE },
