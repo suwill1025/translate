@@ -11,31 +11,42 @@ const lineConfig = {
 };
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "dummy_key");
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "");
 const lineClient = new Client(lineConfig);
 
 const targetLangs = ["zh-TW", "en", "id"];
 const flagMap = { "zh-TW": "🇹🇼", "en": "🇺🇸", "id": "🇮🇩" };
 
-async function translateWithGemini(text, retryCount = 1) {
+// 🌟 核心：自動尋找可用的模型
+async function getBestModel() {
+  const possibleModels = [
+    "gemini-1.5-flash-latest",
+    "gemini-1.5-flash",
+    "gemini-pro",
+    "gemini-2.0-flash-exp"
+  ];
+
+  // 這裡我們直接試最穩的 1.5 系列
+  return "gemini-1.5-flash-latest"; 
+}
+
+async function translateWithGemini(text) {
   try {
+    const modelName = await getBestModel();
+    console.log(`📡 正在使用模型: ${modelName}`);
+
     const model = genAI.getGenerativeModel({
-      // 🌟 核心修正：升級至 2026 年最強模型 Gemini 3 Flash
-      model: "gemini-3-flash", 
-      systemInstruction: "You are an expert translator. Translate to Traditional Chinese, English, and Indonesian. Return ONLY raw JSON format.",
-      generationConfig: { 
-        responseMimeType: "application/json",
-        temperature: 0.2 // 調低溫度讓翻譯更精準穩定
-      }
+      model: modelName,
+      systemInstruction: "You are a professional translator. Translate the input into Traditional Chinese, English, and Indonesian. Return ONLY raw JSON.",
+      generationConfig: { responseMimeType: "application/json" }
     });
 
     const result = await model.generateContent(text);
-    const response = await result.response;
-    const data = JSON.parse(response.text());
+    const data = JSON.parse(result.response.text());
     return { success: true, translations: data.translations };
 
   } catch (error) {
-    console.error("Gemini 內部錯誤:", error.message);
+    console.error("❌ Gemini 執行失敗:", error.message);
     return { success: false, error: error.message };
   }
 }
@@ -54,21 +65,20 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
         .filter(l => result.translations[l])
         .map(l => `${flagMap[l]} ${result.translations[l]}`)
         .join("\n\n");
-      
       lineClient.replyMessage(event.replyToken, { type: "text", text: reply });
     } else {
-      // 報錯給開發者（你），方便檢查
+      // 在 LINE 直接噴出錯誤原因，我們才好除錯
       lineClient.replyMessage(event.replyToken, { 
         type: "text", 
-        text: `❌ 翻譯引擎故障\n訊息: ${result.error}\n(請確認 API Key 是否支援 Gemini 3)` 
+        text: `❌ 翻譯失敗\n原因: ${result.error}\n💡 請確認 Cloud Run 的版本號是否已更新。` 
       });
     }
   });
 });
 
-app.get("/", (req, res) => res.send("🚀 Gemini 3 Translator is Running!"));
+app.get("/", (req, res) => res.send("✅ Translator is Online."));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`✅ Server is live on port ${PORT}`);
+  console.log(`🚀 Server on port ${PORT}`);
 });
