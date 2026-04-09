@@ -20,10 +20,13 @@ const flagMap = { "zh-TW": "🇹🇼", "en": "🇺🇸", "id": "🇮🇩" };
 async function translateWithGemini(text, retryCount = 1) {
   try {
     const model = genAI.getGenerativeModel({
-      // 🌟 修正點：改用 2.0 穩定版 ID，解決 404 問題
-      model: "gemini-2.0-flash", 
-      systemInstruction: "Translate to Traditional Chinese, English, Indonesian. Return ONLY raw JSON.",
-      generationConfig: { responseMimeType: "application/json" }
+      // 🌟 核心修正：升級至 2026 年最強模型 Gemini 3 Flash
+      model: "gemini-3-flash", 
+      systemInstruction: "You are an expert translator. Translate to Traditional Chinese, English, and Indonesian. Return ONLY raw JSON format.",
+      generationConfig: { 
+        responseMimeType: "application/json",
+        temperature: 0.2 // 調低溫度讓翻譯更精準穩定
+      }
     });
 
     const result = await model.generateContent(text);
@@ -32,10 +35,7 @@ async function translateWithGemini(text, retryCount = 1) {
     return { success: true, translations: data.translations };
 
   } catch (error) {
-    if (retryCount > 0 && (error.message.includes("503") || error.message.includes("429"))) {
-      await new Promise(r => setTimeout(r, 1000));
-      return translateWithGemini(text, retryCount - 1);
-    }
+    console.error("Gemini 內部錯誤:", error.message);
     return { success: false, error: error.message };
   }
 }
@@ -54,20 +54,21 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
         .filter(l => result.translations[l])
         .map(l => `${flagMap[l]} ${result.translations[l]}`)
         .join("\n\n");
+      
       lineClient.replyMessage(event.replyToken, { type: "text", text: reply });
     } else {
-      // 🌟 新增：如果翻譯失敗，直接在 LINE 報錯，方便你除錯
+      // 報錯給開發者（你），方便檢查
       lineClient.replyMessage(event.replyToken, { 
         type: "text", 
-        text: `❌ 翻譯失敗\n原因: ${result.error}` 
+        text: `❌ 翻譯引擎故障\n訊息: ${result.error}\n(請確認 API Key 是否支援 Gemini 3)` 
       });
     }
   });
 });
 
-app.get("/", (req, res) => res.send("✅ Bot v2.0 is online."));
+app.get("/", (req, res) => res.send("🚀 Gemini 3 Translator is Running!"));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server starts on ${PORT}`);
+  console.log(`✅ Server is live on port ${PORT}`);
 });
