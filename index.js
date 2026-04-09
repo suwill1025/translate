@@ -1,4 +1,4 @@
-// VERSION: 2.8 (Gemini 2.5 穩定版)
+// VERSION: 2.9 (自動隱藏輸入語言版)
 import express from "express";
 import { Client, middleware as lineMiddleware } from "@line/bot-sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -10,25 +10,36 @@ const lineConfig = {
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-// 使用清單上確認可用的 API Key
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const lineClient = new Client(lineConfig);
 
+const targetLangs = ["zh-TW", "en", "id"];
+const flagMap = { "zh-TW": "🇹🇼", "en": "🇺🇸", "id": "🇮🇩" };
+
 async function translateWithGemini(text) {
   try {
-    // 🌟 核心：使用你清單中最新且穩定的 2.5 版本
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
-      systemInstruction: "You are a professional translator. Translate to Traditional Chinese, English, and Indonesian. Return ONLY valid JSON format with keys 'zh-TW', 'en', and 'id'.",
+      // 🌟 修正點：要求 Gemini 偵測輸入語言，並回傳 detected_lang
+      systemInstruction: `You are an expert translator. Translate the input into Traditional Chinese, English, and Indonesian. 
+      Return ONLY valid JSON in this exact format:
+      {
+        "detected_lang": "zh-TW", // 若輸入為英文則填 "en"，印尼文則填 "id"
+        "translations": {
+          "zh-TW": "...",
+          "en": "...",
+          "id": "..."
+        }
+      }`,
       generationConfig: { responseMimeType: "application/json" }
     });
 
     const result = await model.generateContent(text);
     const data = JSON.parse(result.response.text());
     
-    return { success: true, translations: data };
+    return { success: true, data: data };
   } catch (error) {
-    console.error(`[v2.8 Error]: ${error.message}`);
+    console.error(`[v2.9 Error]: ${error.message}`);
     return { success: false, error: error.message };
   }
 }
@@ -42,21 +53,8 @@ app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
     const result = await translateWithGemini(event.message.text.trim());
     
     if (result.success) {
-      const t = result.translations;
-      const reply = `🇹🇼 ${t["zh-TW"]}\n\n🇺🇸 ${t["en"]}\n\n🇮🇩 ${t["id"]}`;
-      lineClient.replyMessage(event.replyToken, { type: "text", text: reply });
-    } else {
-      lineClient.replyMessage(event.replyToken, { 
-        type: "text", 
-        text: `❌ [v2.8] 系統錯誤\n請檢查 Cloud Run 日誌: ${result.error}` 
-      });
-    }
-  });
-});
-
-app.get("/", (req, res) => res.send("✅ Version 2.8 is Online."));
-
-const PORT = process.env.PORT || 8080;
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 v2.8 Running on Port ${PORT}`);
-});
+      const { detected_lang, translations } = result.data;
+      
+      // 🌟 修正點：用 filter 把「偵測到的來源語言」直接過濾掉不顯示
+      const reply = targetLangs
+        .filter(lang => lang !== detected_lang) // 如果輸入中文(zh-TW)，就不顯示
