@@ -1,6 +1,6 @@
 {
   "name": "line-translate-bot",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "type": "module",
   "scripts": {
     "start": "node index.js"
@@ -8,6 +8,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@line/bot-sdk": "^9.5.2",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
   }
 }
