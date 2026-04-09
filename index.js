@@ -1,4 +1,4 @@
-import "dotenv/config";
+// VERSION: 2.5 (這行是為了讓你在日誌裡辨識版本)
 import express from "express";
 import { Client, middleware as lineMiddleware } from "@line/bot-sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -10,70 +10,49 @@ const lineConfig = {
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-
-// 🌟 關鍵修正：強制指定使用 'v1' 正式版接口，避開 404 的 v1beta
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY || "", { apiVersion: "v1" });
+// 🌟 指定使用 v1 正式接口
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "", { apiVersion: "v1" });
 const lineClient = new Client(lineConfig);
 
-const targetLangs = ["zh-TW", "en", "id"];
-const flagMap = { "zh-TW": "🇹🇼", "en": "🇺🇸", "id": "🇮🇩" };
-
 async function translateWithGemini(text) {
-  // 💡 定義 2026 年最穩定的正式版模型 ID 順序
-  const modelCandidates = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-1.0-pro"];
-  
-  for (const modelName of modelCandidates) {
-    try {
-      console.log(`📡 嘗試連接穩定版模型: ${modelName}`);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        systemInstruction: "Act as a native translator for Traditional Chinese, English, and Indonesian. Return ONLY raw JSON.",
-        generationConfig: { responseMimeType: "application/json" }
-      });
+  try {
+    // 💡 軒，我們就用你付費帳號最穩的 1.5-flash
+    const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      systemInstruction: "You are a professional translator. Translate to Traditional Chinese, English, and Indonesian. Return JSON.",
+      generationConfig: { responseMimeType: "application/json" }
+    });
 
-      const result = await model.generateContent(text);
-      const data = JSON.parse(result.response.text());
-      return { success: true, translations: data.translations, usedModel: modelName };
-    } catch (error) {
-      if (error.message.includes("404")) {
-        console.warn(`⚠️ 模型 ${modelName} 在 v1 接口中仍報 404，切換下一個...`);
-        continue;
-      }
-      return { success: false, error: error.message };
-    }
+    const result = await model.generateContent(text);
+    const data = JSON.parse(result.response.text());
+    return { success: true, translations: data.translations };
+  } catch (error) {
+    // 這裡會印出版本號，幫我們確認新代碼有沒有生效
+    console.error(`[v2.5 Error]: ${error.message}`);
+    return { success: false, error: error.message };
   }
-  return { success: false, error: "所有穩定版模型均無法存取，請檢查 API Key 專案權限" };
 }
 
 app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
   res.status(200).send("OK");
-  
   req.body.events.forEach(async (event) => {
     if (event.type !== "message" || event.message.type !== "text") return;
-    
-    const userInput = event.message.text.trim();
-    const result = await translateWithGemini(userInput);
-    
+    const result = await translateWithGemini(event.message.text.trim());
     if (result.success) {
-      const reply = targetLangs
-        .filter(l => result.translations[l])
-        .map(l => `${flagMap[l]} ${result.translations[l]}`)
-        .join("\n\n");
+      const reply = `🇹🇼 ${result.translations["zh-TW"]}\n\n🇺🇸 ${result.translations["en"]}\n\n🇮🇩 ${result.translations["id"]}`;
       lineClient.replyMessage(event.replyToken, { type: "text", text: reply });
     } else {
-      // 直接回報具體錯誤給 LINE，方便我們診斷
       lineClient.replyMessage(event.replyToken, { 
         type: "text", 
-        text: `❌ 翻譯失敗 (v1 穩定版)\n原因: ${result.error}\n💡 建議確認 Google Cloud 專案是否已啟用 Gemini API` 
+        text: `❌ [v2.5] 翻譯失敗\n原因: ${result.error}` 
       });
     }
   });
 });
 
-app.get("/", (req, res) => res.send("✅ Translator v1-Stable is Live."));
+app.get("/", (req, res) => res.send("✅ Version 2.5 is Online."));
 
 const PORT = process.env.PORT || 8080;
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server starts on ${PORT} using v1 API`);
+  console.log(`🚀 v2.5 Running on Port ${PORT}`);
 });
