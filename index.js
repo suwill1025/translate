@@ -26,15 +26,17 @@ const handleEvent = createEventHandler({
 });
 
 const app = express();
-app.post("/webhook", lineMiddleware(lineConfig), (req, res) => {
-  // Validate the signature before acknowledging; process events asynchronously afterwards.
-  res.status(200).send("OK");
+app.post("/webhook", lineMiddleware(lineConfig), async (req, res) => {
+  // Keep the request active until translation and the LINE reply finish.
+  // Request-based Cloud Run may throttle CPU after the HTTP response ends.
+  const startedAt = Date.now();
   const events = Array.isArray(req.body?.events) ? req.body.events : [];
-  void Promise.allSettled(events.map(handleEvent)).then(results => {
-    for (const result of results) {
-      if (result.status === "rejected") console.error("webhook_event_failed", { type: result.reason?.name });
-    }
-  });
+  const results = await Promise.allSettled(events.map(handleEvent));
+  for (const result of results) {
+    if (result.status === "rejected") console.error("webhook_event_failed", { type: result.reason?.name });
+  }
+  console.info("webhook_completed", { durationMs: Date.now() - startedAt, eventCount: events.length });
+  res.status(200).send("OK");
 });
 app.get("/", (req, res) => res.send(`✅ LINE Translator v${VERSION} is Online.`));
 app.use((error, req, res, next) => {

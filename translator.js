@@ -1,4 +1,4 @@
-export const VERSION = "5.0.0";
+export const VERSION = "5.0.1";
 export const DEFAULT_MODELS = [
   "gemini-3.5-flash-lite",
   "gemini-2.5-flash",
@@ -114,6 +114,7 @@ export function createTranslator({
     const deadline = Date.now() + totalTimeoutMs;
     let lastError;
     for (const model of modelList) {
+      const attemptStartedAt = Date.now();
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new TranslationTimeoutError();
       try {
@@ -130,8 +131,11 @@ export function createTranslator({
         let data;
         try { data = JSON.parse(response.text); }
         catch { throw new InvalidTranslationError(); }
-        return validateTranslation(data);
+        const validated = validateTranslation(data);
+        logger.info?.("translation_completed", { model, durationMs: Date.now() - attemptStartedAt });
+        return validated;
       } catch (error) {
+        logger.info?.("translation_attempt_timing", { model, durationMs: Date.now() - attemptStartedAt });
         lastError = error;
         logFailure(logger, "translation_attempt_failed", error, model);
         if (!canTryFallback(error)) throw error;
@@ -159,7 +163,7 @@ export function buildReplyMessages(data, limit = 4500) {
 
 function userErrorMessage(error) {
   if (errorStatus(error) === 429) return "❌ 翻譯服務目前使用量較高，請稍後再試一次。";
-  if (error instanceof TranslationTimeoutError) return "❌ 翻譯等待逾時，請稍後再傳一次，或將訊息拆成較短的段落。";
+  if (error instanceof TranslationTimeoutError) return "❌ 翻譯服務暫時回應較慢，這次未能完成，請稍後再傳一次。";
   return "❌ 這次翻譯未能完成，請稍後再試一次，或將訊息拆成較短的段落。";
 }
 

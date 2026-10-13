@@ -198,7 +198,7 @@ test("real server starts, verifies LINE signatures, and accepts the empty verifi
       new Promise((_, reject) => { const timer = setTimeout(() => reject(new Error("Server startup timed out")), 10000); timer.unref(); })
     ]);
     const base = `http://127.0.0.1:${port}`;
-    assert.match(await (await fetch(base)).text(), /v5\.0\.0/);
+    assert.match(await (await fetch(base)).text(), /v5\.0\.1/);
     const body = JSON.stringify({ events: [] });
     const signature = createHmac("sha256", "test-secret").update(body).digest("base64");
     assert.equal((await fetch(`${base}/webhook`, { method: "POST", headers: { "Content-Type": "application/json", "x-line-signature": signature }, body })).status, 200);
